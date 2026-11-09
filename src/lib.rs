@@ -25,7 +25,7 @@ const NB_MAGIC: &str = "notebook v1";
 const NT_MAGIC: &str = "notebook link v1";
 
 #[derive(Parser)]
-#[command(name = "notebook", version, about = "Organized notebooks that save AI agents from re-reading what they already know")]
+#[command(name = "notebook", version, about = "A searchable, single-file notebook for AI agents")]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
