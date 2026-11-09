@@ -1,6 +1,6 @@
 # notebook
 
-**A single-file library of tagged markdown notes, built for AI agents.**
+**Organized notebooks that save AI agents from re-reading what they already know.**
 
 `notebook` (alias `nb`) replaces the pile of `NOTES.md`, `PLAN.md` and `findings-v2.md` files that agents leave behind. Each subject gets one `.nb` file holding many small notes. Every note carries a number, a timestamp, identifiers and a title. Every identifier is defined once, with its meaning, at the top of the file.
 
