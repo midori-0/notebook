@@ -127,13 +127,15 @@ ln -s "$PWD/skills/notebook" ~/.claude/skills/notebook
 
 For a stronger nudge, add a line like this to `~/.claude/CLAUDE.md`:
 
-> For your own notes, plans, findings, TODOs, research and handoffs, use the `nb` notebook CLI (see the notebook skill), never new `.md` files.
+> For your own notes, plans, findings, TODOs, research and handoffs, use the `nb` notebook CLI (see the notebook skill), never new `.md` files. That includes plans, briefs and handoffs written for another agent, even when I call them a doc. Plain markdown is only for README, CHANGELOG, an existing docs site, CLAUDE.md, AGENTS.md, skills, memory, or when I ask for a `.md` file.
 
 ### Guard hook
 
 `hooks/md-guard.sh` is a `PreToolUse` hook (matcher `Write`). It asks for your approval before an agent creates a new `.md` file outside an allowlist:
 - README, CHANGELOG, CONTRIBUTING, LICENSE, CLAUDE.md, AGENTS.md and SKILL.md;
-- anything under `docs/` or `.claude/`.
+- anything under `.claude/`, or under a `docs/` folder that already exists.
+
+Notes by name (`PLAN.md`, `PLANNING.md`, `NOTES.md`, `TODO.md`, `handoff.md` and the like) are asked about even inside `docs/`, and so is a `docs/` folder created for the new file.
 
 Editing existing markdown is never blocked. It's a shell script that needs `jq`; on Windows it runs under the Git Bash that Claude Code uses. Add it to `~/.claude/settings.json`:
 

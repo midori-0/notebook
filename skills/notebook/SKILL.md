@@ -22,6 +22,8 @@ Use `nb` for anything you would otherwise write as a markdown file for yourself 
 
 Keep regular markdown for files that humans or tools read directly: README, CHANGELOG, docs sites, CLAUDE.md/AGENTS.md, and anything the user asked for as a `.md` file.
 
+A plan, brief or handoff written for another agent to read is a note too, even when the user calls it a "planning doc" and even if a `docs/` folder is handy. Creating `docs/` just to hold it doesn't make it a docs site. If it needs to sit in a particular folder, use an `.nt` link (below). If you're unsure whether the user wants a `.md` file, ask.
+
 ## Which notebook
 
 Use one notebook per **subject area**, not one per project. If a project covers unrelated fields, give each field its own notebook rather than forcing them into one. For example, a project researching both computer science and biology gets `computer-science.nb` and `biology.nb`. Within a notebook, identifiers split the subject into topics (`single-celled`, `cephalopods`, ...).
