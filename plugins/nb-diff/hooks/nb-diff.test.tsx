@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-import { linkTarget, targets, unified } from './diff'
+import { join, linkTarget, targets, unified } from './diff'
 
 const BEFORE = 'notebook v1\nuid t-1\n\n@@ 1 2026-11-09T00:00:00Z [] one\nfirst\n\n@@ 2 2026-11-09T00:00:00Z [] two\nsecond\n\n'
 const AFTER = 'notebook v1\nuid t-1\n\n@@ 1 2026-11-09T00:00:00Z [] one\nfirst\n\n@@ 2 2026-11-09T00:01:00Z [] two\nsecond, edited\n\n'
@@ -9,6 +9,7 @@ test('targets finds the notebook of each write command, and skips reads', () => 
   expect(targets('nb add bio.nb -i cells -t "A b" --text x')).toEqual(['bio.nb'])
   expect(targets('cd x && nb edit docs/a.nt 3 -t y; notebook rm "my notes.nb" 4')).toEqual(['docs/a.nt', 'my notes.nb'])
   expect(targets('/Users/me/.cargo/bin/nb rm bio.nb 2')).toEqual(['bio.nb'])
+  expect(targets('C:\\Users\\me\\.cargo\\bin\\nb.exe edit C:\\notes\\bio.nb 2 -t x')).toEqual(['C:\\notes\\bio.nb'])
   expect(targets('nb show bio.nb -n 2 && nb list bio.nb && nb ids bio.nb')).toEqual([])
   expect(targets('grep nbx file.nb')).toEqual([])
 })
@@ -16,6 +17,9 @@ test('targets finds the notebook of each write command, and skips reads', () => 
 test('linkTarget resolves a .nt link against its own folder', () => {
   expect(linkTarget('docs/a.nt', 'notebook link v1\nnotebook: ../bio.nb\nids: a\n')).toBe('docs/../bio.nb')
   expect(linkTarget('a.nt', 'notebook link v1\nnotebook: bio.nb\n')).toBe('bio.nb')
+  expect(linkTarget('C:\\proj\\docs\\a.nt', 'notebook link v1\nnotebook: ../bio.nb\n')).toBe('C:\\proj\\docs/../bio.nb')
+  expect(join('C:\\proj', 'C:\\other\\x.nb')).toBe('C:\\other\\x.nb')
+  expect(join('C:\\proj\\', 'x.nb')).toBe('C:\\proj/x.nb')
 })
 
 test('unified shows an edit as one hunk with context', () => {

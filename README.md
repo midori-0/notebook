@@ -35,7 +35,7 @@ Looking for single-celled organisms never means reading the octopus notes.
 cargo install --git https://github.com/midori-0/notebook
 ```
 
-Or, from a clone, `cargo install --path .`. Both install `notebook` and `nb`.
+Or, from a clone, `cargo install --path .`. Both install `notebook` and `nb`. Works on macOS, Linux and Windows.
 
 ## Quick start
 
@@ -103,7 +103,7 @@ A link stores a relative path to its notebook plus a selection. It keeps working
 
 ## Trash
 
-Removed notes and deleted links go to `~/.cache/notebook/<uid>/`, or under `$XDG_CACHE_HOME`.
+Removed notes and deleted links go to `~/.cache/notebook/<uid>/` on macOS and Linux, `%LOCALAPPDATA%\notebook\<uid>\` on Windows, or under `$XDG_CACHE_HOME` when that's set.
 - **Restoring:** `nb restore` brings a note back in its original place with its original number. Note numbers are never reused, so links can't silently point at the wrong note.
 - **Expiry:** entries expire after 30 days; set `NB_TRASH_DAYS` to change that. Each `rm`, `restore` or `purge` sweeps expired entries from every notebook's trash.
 - **Moves:** each notebook has a permanent `uid`, so its trash follows it when it's moved or renamed.
@@ -135,7 +135,7 @@ For a stronger nudge, add a line like this to `~/.claude/CLAUDE.md`:
 - README, CHANGELOG, CONTRIBUTING, LICENSE, CLAUDE.md, AGENTS.md and SKILL.md;
 - anything under `docs/` or `.claude/`.
 
-Editing existing markdown is never blocked. Add it to `~/.claude/settings.json`:
+Editing existing markdown is never blocked. It's a shell script that needs `jq`; on Windows it runs under the Git Bash that Claude Code uses. Add it to `~/.claude/settings.json`:
 
 ```json
 { "hooks": { "PreToolUse": [ { "matcher": "Write",
@@ -176,12 +176,12 @@ Amoebas move by extending pseudopods.
 - **`link <path>`:** the registered `.nt` files, relative to the notebook's folder.
 - **`@@ <n> <timestamp> [ids] <title>`:** a note header. The markdown body follows it.
 
-Body lines that start with `@@` or `\` are stored with an extra leading `\`. Timestamps are UTC RFC 3339, so they sort as plain text, which is why `--since` and `--until` take any prefix.
+Body lines that start with `@@` or `\` are stored with an extra leading `\`. Paths stored in links always use `/`, so a notebook and its links can move between macOS, Linux and Windows. Writers take a lock on a small file in the cache folder, never on the notebook itself, so readers can always open a notebook while it's being written. Timestamps are UTC RFC 3339, so they sort as plain text, which is why `--since` and `--until` take any prefix.
 
 ## Development
 
 ```bash
-cargo test                              # format, filters, edit, remove/restore, trash expiry, moves
+cargo test                              # format, filters, edit, remove/restore, trash expiry, moves (CI: macOS, Linux, Windows)
 cargo clippy --all-targets
 hooks/md-guard.test.sh                  # guard hook self-check
 claude plugin test plugins/nb-diff      # mod tests
@@ -197,5 +197,4 @@ plugins/nb-diff/        Claude Code mod: notebook writes as native Edit cards
 
 ## Limitations
 
-- Unix only for now. The lock's file-replacement check uses inode numbers.
 - No full-text search over note bodies. Find notes by identifier, number and time.

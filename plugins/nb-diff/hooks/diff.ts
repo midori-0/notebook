@@ -5,7 +5,7 @@ const WRITES = new Set(['make', 'add', 'edit', 'rm', 'restore', 'link'])
 /** The .nb/.nt files that write commands in a shell command name (first such argument of each). */
 export function targets(command: string): string[] {
   const files: string[] = []
-  const call = /(?:^|[\s;&|(/])(?:nb|notebook)\s+([a-z]+)((?:[ \t]+(?:"[^"]*"|'[^']*'|[^\s;&|]+))*)/g
+  const call = /(?:^|[\s;&|(/\\])(?:nb|notebook)(?:\.exe)?\s+([a-z]+)((?:[ \t]+(?:"[^"]*"|'[^']*'|[^\s;&|]+))*)/g
   for (const m of command.matchAll(call)) {
     if (!WRITES.has(m[1]!)) continue
     const args = [...m[2]!.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map(t => t[1] ?? t[2] ?? t[3]!)
@@ -20,13 +20,18 @@ export function leadingCd(command: string): string | undefined {
   return command.match(/^\s*cd\s+("[^"]*"|'[^']*'|\S+)\s*&&/)?.[1]!.replace(/^["']|["']$/g, '')
 }
 
+/** Absolute on any OS: `/x`, `\\x`, `C:\\x` or `C:/x`. */
+export function isAbsolute(p: string): boolean {
+  return /^([\\/]|[A-Za-z]:[\\/])/.test(p)
+}
+
 export function join(dir: string | undefined, p: string): string {
-  return !dir || p.startsWith('/') ? p : `${dir.replace(/\/$/, '')}/${p}`
+  return !dir || isAbsolute(p) ? p : `${dir.replace(/[\\/]$/, '')}/${p}`
 }
 
 export function dirname(p: string): string {
-  const i = p.lastIndexOf('/')
-  return i < 0 ? '' : p.slice(0, i) || '/'
+  const i = Math.max(p.lastIndexOf('/'), p.lastIndexOf('\\'))
+  return i < 0 ? '' : p.slice(0, i) || p.slice(0, 1)
 }
 
 /** The notebook a .nt link points at, from its `notebook:` line, relative to the link's folder. */

@@ -15,7 +15,7 @@
 use clap::{Args, Parser, Subcommand};
 use std::error::Error;
 use std::fs::{self, File, OpenOptions};
-use std::io::{self, IsTerminal, Read, Write};
+use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -206,7 +206,7 @@ fn parse(src: &str) -> Res<Book<'_>> {
             book.links.push(v);
         } else if let Some(v) = line.strip_prefix("uid ") {
             // The uid becomes a folder name under the cache: never let it escape that folder.
-            if v.is_empty() || v == "." || v == ".." || v.contains(['/', '\\', '\0']) {
+            if v.is_empty() || v == "." || v == ".." || v.contains(['/', '\\', ':', '\0']) {
                 return Err(format!("bad uid on line {}", i + 1).into());
             }
             book.uid = Some(v);
@@ -312,17 +312,38 @@ fn read(path: &Path) -> Res<String> {
     fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()).into())
 }
 
-/// Open and exclusively lock the notebook, retrying if a concurrent writer replaced it.
-fn lock(path: &Path) -> Res<File> {
-    loop {
-        let f = OpenOptions::new().read(true).append(true).open(path).map_err(|e| format!("{}: {e}", path.display()))?;
-        f.lock()?;
-        // shortcut: inode check is unix-only; port with file IDs if Windows support is needed.
-        use std::os::unix::fs::MetadataExt;
-        if f.metadata()?.ino() == fs::metadata(path)?.ino() {
-            return Ok(f);
-        }
+/// Canonical absolute path. On Windows, drops the `\\?\` prefix from plain drive paths so the
+/// result still joins with `/`-separated relative paths.
+fn canon(p: &Path) -> io::Result<PathBuf> {
+    let c = fs::canonicalize(p)?;
+    #[cfg(windows)]
+    if let Some(s) = c.to_str().and_then(|s| s.strip_prefix(r"\\?\")).filter(|s| s.as_bytes().get(1) == Some(&b':')) {
+        return Ok(PathBuf::from(s));
     }
+    Ok(c)
+}
+
+/// A relative path written with `/` on every OS, so links work wherever they are read.
+fn slash(p: &Path) -> String {
+    p.iter().map(|c| c.to_string_lossy()).collect::<Vec<_>>().join("/")
+}
+
+/// The notebook's lock file: in the cache, never beside the notebook. Locking a separate file
+/// leaves the notebook itself unlocked, so readers can always open it (Windows locks are
+/// mandatory) and writers can replace it atomically.
+fn lock_file(path: &Path) -> Res<File> {
+    let abs = canon(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let dir = cache_root().join(".locks");
+    fs::create_dir_all(&dir)?;
+    let name = format!("{:016x}.lock", fnv(abs.as_os_str().as_encoded_bytes()));
+    Ok(OpenOptions::new().create(true).truncate(false).write(true).open(dir.join(name))?)
+}
+
+/// Take the notebook's exclusive write lock; released when the returned file is dropped.
+fn lock(path: &Path) -> Res<File> {
+    let f = lock_file(path)?;
+    f.lock()?;
+    Ok(f)
 }
 
 /// Body from --text, or stdin when --text is absent or `-`.
@@ -404,9 +425,8 @@ fn add(path: &Path, id_args: &[String], title: Option<&str>, text: Option<&str>)
     check_title(title)?;
     let body = read_body(text)?;
 
-    let mut f = lock(path)?;
-    let mut src = String::new();
-    (&f).read_to_string(&mut src)?;
+    let _lock = lock(path)?;
+    let src = read(path)?;
     let book = parse(&src)?;
     let (ids, new_ids) = check_ids(&book, id_args)?;
 
@@ -414,7 +434,7 @@ fn add(path: &Path, id_args: &[String], title: Option<&str>, text: Option<&str>)
     let note = serialize_note(n, &now_utc(), &ids, title.unwrap_or(""), &body);
 
     if new_ids.is_empty() {
-        f.write_all(note.as_bytes())?;
+        OpenOptions::new().append(true).open(path)?.write_all(note.as_bytes())?;
     } else {
         // New ids go in the top dictionary, so the file must be rewritten.
         let dict = book.ids.iter().chain(&new_ids).copied();
@@ -430,9 +450,8 @@ fn edit(path: &Path, n: u32, id_args: &[String], title: Option<&str>, text: Opti
     check_title(title)?;
     let new_body = text.map(|t| read_body(Some(t))).transpose()?;
 
-    let f = lock(path)?;
-    let mut src = String::new();
-    (&f).read_to_string(&mut src)?;
+    let _lock = lock(path)?;
+    let src = read(path)?;
     let book = parse(&src)?;
     let i = book.notes.iter().position(|x| x.n == n).ok_or_else(|| format!("no note {n}"))?;
     let old = &book.notes[i];
@@ -445,15 +464,9 @@ fn edit(path: &Path, n: u32, id_args: &[String], title: Option<&str>, text: Opti
     rewrite(path, &uid_of(&book, path)?, book.ids.iter().chain(&new_ids).copied(), book.last, &book.links, &parts)
 }
 
-fn read_locked(f: &File) -> Res<String> {
-    let mut src = String::new();
-    { f }.read_to_string(&mut src)?;
-    Ok(src)
-}
-
 /// The notebook's folder, canonicalized (links are stored relative to it).
 fn nb_dir(path: &Path) -> Res<PathBuf> {
-    Ok(fs::canonicalize(path)?.parent().ok_or("notebook has no parent folder")?.to_path_buf())
+    Ok(canon(path)?.parent().ok_or("notebook has no parent folder")?.to_path_buf())
 }
 
 /// FNV-1a: stable across Rust versions, unlike DefaultHasher.
@@ -478,7 +491,7 @@ fn uid_of(book: &Book, path: &Path) -> Res<String> {
     if let Some(u) = book.uid {
         return Ok(u.to_string());
     }
-    let abs = fs::canonicalize(path)?;
+    let abs = canon(path)?;
     Ok(format!("{}-{:016x}", file_name(&abs), fnv(abs.as_os_str().as_encoded_bytes())))
 }
 
@@ -488,9 +501,11 @@ fn trash_dir(cache: &Path, nb: &Path) -> Res<PathBuf> {
     Ok(cache.join(uid_of(&parse(&src)?, nb)?))
 }
 
+/// `$XDG_CACHE_HOME`, else `~/.cache` (macOS, Linux) or `%LOCALAPPDATA%` (Windows); then `notebook`.
 fn cache_root() -> PathBuf {
-    let base = std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).unwrap_or_else(|| Path::new(&std::env::var_os("HOME").unwrap_or_default()).join(".cache"));
-    base.join("notebook")
+    let env = |k: &str| std::env::var_os(k).filter(|v| !v.is_empty()).map(PathBuf::from);
+    let os_default = if cfg!(windows) { env("LOCALAPPDATA") } else { env("HOME").map(|h| h.join(".cache")) };
+    env("XDG_CACHE_HOME").or(os_default).unwrap_or_else(std::env::temp_dir).join("notebook")
 }
 
 fn read_trash(dir: &Path) -> String {
@@ -550,7 +565,7 @@ fn update_trash(tdir: &Path, nb: Option<&Path>, cutoff: &str, keep: impl Fn(u32)
     removed.extend(add.removed);
     let mut out = format!("{NB_MAGIC}\n");
     // Record the owner's path (refreshed on every update) so orphaned trash can be found.
-    let owner = nb.map(|p| fs::canonicalize(p).unwrap_or_else(|_| p.to_path_buf()).display().to_string());
+    let owner = nb.map(|p| canon(p).unwrap_or_else(|_| p.to_path_buf()).display().to_string());
     if let Some(o) = owner.as_deref().or(t.notebook) {
         out.push_str(&format!("notebook {o}\n"));
     }
@@ -570,7 +585,7 @@ fn update_trash(tdir: &Path, nb: Option<&Path>, cutoff: &str, keep: impl Fn(u32)
 fn sweep(cache: &Path, cutoff: &str, orphans: bool) -> (usize, usize) {
     let (mut dirs, mut expired) = (0, 0);
     let Ok(rd) = fs::read_dir(cache) else { return (0, 0) };
-    for dir in rd.flatten().map(|e| e.path()).filter(|p| p.is_dir()) {
+    for dir in rd.flatten().map(|e| e.path()).filter(|p| p.join("trash.nb").is_file()) {
         let tsrc = read_trash(&dir);
         let Ok(t) = parse(&tsrc) else { continue };
         let owner = t.notebook.map(PathBuf::from);
@@ -584,7 +599,7 @@ fn sweep(cache: &Path, cutoff: &str, orphans: bool) -> (usize, usize) {
         }
         // Lock a live owner without waiting: avoids deadlock with another sweep, and skips our own.
         let _lock = match owner.as_deref().filter(|_| alive) {
-            Some(nb) => match File::open(nb).map(|f| f.try_lock().map(|_| f)) {
+            Some(nb) => match lock_file(nb).map(|f| f.try_lock().map(|_| f)) {
                 Ok(Ok(f)) => Some(f),
                 _ => continue,
             },
@@ -610,8 +625,8 @@ fn purge(path: &Path, ns: &[u32], cache: &Path) -> Res<usize> {
 /// Remove notes. Links that name a removed note, or that would select nothing afterwards, are deleted.
 /// Notes and deleted links go to the trash so `restore` can bring them back. Returns deleted link paths.
 fn rm(path: &Path, ns: &[u32], cache: &Path) -> Res<Vec<String>> {
-    let f = lock(path)?;
-    let src = read_locked(&f)?;
+    let _lock = lock(path)?;
+    let src = read(path)?;
     let book = parse(&src)?;
     if let Some(n) = ns.iter().find(|n| !book.notes.iter().any(|x| x.n == **n)) {
         return Err(format!("no note {n}").into());
@@ -662,8 +677,8 @@ fn rm(path: &Path, ns: &[u32], cache: &Path) -> Res<Vec<String>> {
 
 /// Bring notes (and the links deleted with them) back from the trash. Returns restored link paths.
 fn restore(path: &Path, ns: &[u32], cache: &Path) -> Res<Vec<String>> {
-    let f = lock(path)?;
-    let src = read_locked(&f)?;
+    let _lock = lock(path)?;
+    let src = read(path)?;
     let book = parse(&src)?;
     let tdir = trash_dir(cache, path)?;
     let tsrc = read_trash(&tdir);
@@ -727,15 +742,15 @@ fn relative(from_dir: &Path, to: &Path) -> PathBuf {
 
 fn link(nb: &Path, out: &Path, f: &Filter) -> Res<()> {
     let (nb, _) = resolve(nb)?;
-    let lk = lock(&nb)?;
-    let src = read_locked(&lk)?;
+    let _lock = lock(&nb)?;
+    let src = read(&nb)?;
     let book = parse(&src)?; // refuse to link to something that is not a notebook
     let dir = match out.parent() {
         Some(p) if !p.as_os_str().is_empty() => p,
         _ => Path::new("."),
     };
-    let rel = relative(&fs::canonicalize(dir)?, &fs::canonicalize(&nb)?);
-    let mut s = format!("{NT_MAGIC}\nnotebook: {}\n", rel.display());
+    let rel = relative(&canon(dir)?, &canon(&nb)?);
+    let mut s = format!("{NT_MAGIC}\nnotebook: {}\n", slash(&rel));
     if !f.notes.is_empty() {
         let v: Vec<_> = f.notes.iter().map(u32::to_string).collect();
         s.push_str(&format!("notes: {}\n", v.join(",")));
@@ -753,7 +768,7 @@ fn link(nb: &Path, out: &Path, f: &Filter) -> Res<()> {
     OpenOptions::new().write(true).create_new(true).open(out).map_err(|e| format!("{}: {e}", out.display()))?.write_all(s.as_bytes())?;
 
     // Register the link so `rm` can find it.
-    let reg = relative(&nb_dir(&nb)?, &fs::canonicalize(out)?).display().to_string();
+    let reg = slash(&relative(&nb_dir(&nb)?, &canon(out)?));
     let mut links = book.links.clone();
     links.push(&reg);
     rewrite(&nb, &uid_of(&book, &nb)?, book.ids.iter().copied(), book.last, &links, &[&src[book.notes_start..]])
@@ -1014,7 +1029,7 @@ mod tests {
         // Owner path is recorded; deleting the notebook makes its trash an orphan.
         rm(&q, &[2], &cache).unwrap();
         let rec = read_trash(&legacy);
-        assert_eq!(parse(&rec).unwrap().notebook, Some(fs::canonicalize(&q).unwrap().to_str().unwrap()));
+        assert_eq!(parse(&rec).unwrap().notebook, Some(canon(&q).unwrap().to_str().unwrap()));
         assert_eq!(sweep(&cache, "", false), (0, 0)); // owner alive: nothing touched
         fs::remove_file(&q).unwrap();
         assert_eq!(sweep(&cache, "", true), (1, 0));
