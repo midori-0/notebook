@@ -2,8 +2,8 @@
 
 use crate::Res;
 use crate::env::Env;
-use crate::filter::Filter;
-use crate::format;
+use crate::filter::{Filter, Numbers};
+use crate::format::{self, Note};
 use crate::link;
 use crate::paths::{canon, folder};
 use crate::store::{self, Lock, Rewrite};
@@ -110,11 +110,20 @@ pub fn restore(env: &Env, path: &Path, ns: &[u32]) -> Res<Vec<(String, bool)>> {
     let mut out = Rewrite::create(path)?;
     let new_links = back.iter().map(|(rel, _)| rel.as_str()).filter(|r| !head.links.iter().any(|l| l == r));
     format::write_header(&mut out, &uid, head.ids(), head.last, head.links().chain(new_links))?;
+    // Identifiers deleted while a note sat in the trash don't come back with it.
+    let defined = |id: &str| head.ids().any(|(k, _)| k == id);
+    let put_back = |out: &mut Rewrite, raw: &str| -> Res<()> {
+        match Note::parse(raw) {
+            Some(note) if !note.ids().all(defined) => note.retagged(out, defined)?,
+            _ => out.write_all(raw.as_bytes())?,
+        }
+        Ok(())
+    };
     let mut pending = snap.wanted.iter().peekable();
     let mut clashes = vec![];
     while let Some(note) = notes.next_note()? {
         while let Some((_, raw)) = pending.next_if(|(n, _)| *n < note.n) {
-            out.write_all(raw.as_bytes())?;
+            put_back(&mut out, raw)?;
         }
         if restoring.has(note.n) {
             clashes.push(note.n);
@@ -122,7 +131,7 @@ pub fn restore(env: &Env, path: &Path, ns: &[u32]) -> Res<Vec<(String, bool)>> {
         out.write_all(note.raw.as_bytes())?;
     }
     for (_, raw) in pending {
-        out.write_all(raw.as_bytes())?;
+        put_back(&mut out, raw)?;
     }
     drop(notes);
     for &n in ns {
@@ -161,20 +170,4 @@ pub fn purge(env: &Env, path: &Path, ns: &[u32]) -> Res<usize> {
     }
     let purging = Numbers::new(ns);
     trash.update(snap, Some(path), &env.stamp(), "", |n| !ns.is_empty() && !purging.has(n), Incoming::default())
-}
-
-/// Note numbers, sorted so a lookup stays cheap however many are given.
-struct Numbers(Vec<u32>);
-
-impl Numbers {
-    fn new(ns: &[u32]) -> Self {
-        let mut v = ns.to_vec();
-        v.sort_unstable();
-        v.dedup();
-        Numbers(v)
-    }
-
-    fn has(&self, n: u32) -> bool {
-        self.0.binary_search(&n).is_ok()
-    }
 }

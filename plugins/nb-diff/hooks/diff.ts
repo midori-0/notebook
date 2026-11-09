@@ -1,7 +1,7 @@
 // The mod's pure logic: which notebook files a shell command writes, and a line diff of each
 // file's before and after. No I/O, so all of it is testable on plain strings.
 
-const WRITES = new Set(['make', 'add', 'edit', 'rm', 'restore', 'link'])
+const WRITES = new Set(['make', 'add', 'edit', 'rmid', 'untag', 'rm', 'restore', 'link'])
 
 /** The .nb/.nt file each nb write command names (its first such argument), in order, deduplicated. */
 export function targets(command: string): string[] {

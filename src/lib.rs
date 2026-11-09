@@ -6,7 +6,7 @@
 //!
 //! Layout, from the bottom up: `time` and `paths` are helpers; `format` reads and writes the text
 //! format; `filter` and `link` select notes; `store` opens, locks and replaces files; `trash`
-//! keeps removed notes; `read`, `write` and `remove` are the commands; `cli` parses arguments.
+//! keeps removed notes; `read`, `write`, `remove` and `untag` are the commands; `cli` parses arguments.
 
 mod cli;
 mod env;
@@ -19,6 +19,7 @@ mod remove;
 mod store;
 mod time;
 mod trash;
+mod untag;
 mod write;
 
 #[cfg(test)]

@@ -166,6 +166,14 @@ impl<'a> Note<'a> {
         self.body.split_inclusive('\n').map(|l| unescape(l.trim_end_matches(['\n', '\r'])))
     }
 
+    /// Writes the note back with only the identifiers `keep` accepts. The body is copied as
+    /// stored and the timestamp is kept.
+    pub fn retagged(&self, w: &mut impl Write, keep: impl Fn(&str) -> bool + Clone) -> io::Result<()> {
+        let ids = self.ids().filter(move |i| keep(i));
+        writeln!(w, "@@ {}", Head { n: self.n, ts: self.ts, ids, title: self.title })?;
+        w.write_all(self.raw.split_once('\n').map_or("", |(_, rest)| rest).as_bytes())
+    }
+
     /// The body as one string, unescaped.
     pub fn body(&self) -> String {
         let mut s = String::with_capacity(self.body.len());

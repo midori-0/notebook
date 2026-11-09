@@ -12,6 +12,7 @@ test('targets finds the notebook of each write command, and skips reads', () => 
   expect(targets('C:\\Users\\me\\.cargo\\bin\\nb.exe edit C:\\notes\\bio.nb 2 -t x')).toEqual(['C:\\notes\\bio.nb'])
   expect(targets('nb show bio.nb -n 2 && nb list bio.nb && nb ids bio.nb')).toEqual([])
   expect(targets('grep nbx file.nb')).toEqual([])
+  expect(targets('nb rmid bio.nb octo && nb untag a.nt x -n 2')).toEqual(['bio.nb', 'a.nt'])
 })
 
 test('linkTarget resolves a .nt link against its own folder', () => {

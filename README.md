@@ -60,6 +60,7 @@ nb edit biology.nb 1 --text "Amoebas move by extending pseudopods."
 | `nb make <file.nb>` | Create an empty notebook |
 | `nb add <file> [-i ID]... [-t TITLE] [--text BODY]` | Add a note and print its number. New identifiers must be `-i 'name:meaning'`; existing ones are just `-i name` |
 | `nb edit <file> <n> [-t ...] [--text ...] [-i ...]` | Edit a note in place. Only the parts you pass change. `--text -` reads stdin, and `-i` replaces the identifier list. The timestamp becomes now |
+| `nb rmid <file> <id>... [-n N]...` | Delete identifiers from the dictionary and every note. With `-n`, take them off those notes only and keep them defined. Timestamps don't change. Links that filter on a deleted identifier, or would select nothing, are deleted. Alias: `nb untag` |
 | `nb link <file.nb> <out.nt> [filters]` | Write a `.nt` link to a selection of notes |
 
 **Read**
@@ -104,7 +105,7 @@ A link stores a relative path to its notebook plus a selection. It keeps working
 ## Trash
 
 Removed notes and deleted links go to `~/.cache/notebook/<uid>/` on macOS and Linux, `%LOCALAPPDATA%\notebook\<uid>\` on Windows, or under `$XDG_CACHE_HOME` when that's set.
-- **Restoring:** `nb restore` brings a note back in its original place with its original number. Note numbers are never reused, so links can't silently point at the wrong note.
+- **Restoring:** `nb restore` brings a note back in its original place with its original number. Note numbers are never reused, so links can't silently point at the wrong note. Identifiers deleted with `nb rmid` while the note was in the trash don't come back with it.
 - **Expiry:** entries expire after 30 days; set `NB_TRASH_DAYS` to change that. Each `rm`, `restore` or `purge` sweeps expired entries from every notebook's trash.
 - **Moves:** each notebook has a permanent `uid`, so its trash follows it when it's moved or renamed.
 
@@ -146,7 +147,7 @@ Editing existing markdown is never blocked. It's a shell script that needs `jq`;
 
 ### Native edit cards (`nb-diff` mod)
 
-`plugins/nb-diff/` is a Claude Code mod. It shows every notebook write (`make`, `add`, `edit`, `rm`, `restore`, `link`) as Claude Code's own **Edit** card for the `.nb` file, with line numbers and red/green changes, exactly like a code edit. It changes the display only: the agent sees the same output, and token use is unchanged.
+`plugins/nb-diff/` is a Claude Code mod. It shows every notebook write (`make`, `add`, `edit`, `rmid`, `rm`, `restore`, `link`) as Claude Code's own **Edit** card for the `.nb` file, with line numbers and red/green changes, exactly like a code edit. It changes the display only: the agent sees the same output, and token use is unchanged.
 
 This repository is its marketplace:
 
@@ -193,7 +194,7 @@ claude plugin test plugins/nb-diff      # mod tests
 src/format.rs           the .nb format and its streaming reader
 src/store.rs            opening, locking and atomically replacing files
 src/trash.rs            the trash: removed notes, expiry, orphan sweeps
-src/read.rs, write.rs, remove.rs   the commands
+src/read.rs, write.rs, remove.rs, untag.rs   the commands
 src/cli.rs              argument parsing and output
 src/main.rs, bin/nb.rs  the `notebook` and `nb` binaries
 skills/notebook/        Claude Code skill

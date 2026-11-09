@@ -9,6 +9,7 @@ use crate::read::{self, View};
 use crate::remove::{purge, restore, rm};
 use crate::store;
 use crate::trash::{self, Incoming, Trash};
+use crate::untag::rmid;
 use crate::write::{add, edit, link};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -259,4 +260,60 @@ fn a_note_bigger_than_the_buffers_survives() {
     let got = notes(&p);
     assert_eq!((got[0].1.as_str(), got[0].3.as_str()), ("big, renamed", big));
     assert_eq!(got[1].3, "small");
+}
+
+#[test]
+fn rmid_untags_chosen_notes_or_deletes_everywhere() {
+    let sc = Scratch::new("rmid");
+    let p = sc.notebook("t.nb");
+    sc.add(&p, &["a:A", "b:B"], "one", "1").unwrap();
+    sc.add(&p, &["a", "c:C"], "two", "2").unwrap();
+    sc.add(&p, &["b"], "three", "3").unwrap();
+    link(&sc.env, &p, &sc.root.join("a.nt"), &select(vec![], &["a"])).unwrap(); // filters on a: goes when a is deleted
+    link(&sc.env, &p, &sc.root.join("one.nt"), &select(vec![1], &[])).unwrap(); // by number: stays
+    link(&sc.env, &p, &sc.root.join("c.nt"), &select(vec![], &["c"])).unwrap(); // only note 2 has c: emptied
+    link(&sc.env, &p, &sc.root.join("b.nt"), &select(vec![], &["b"])).unwrap(); // note 1 keeps b: stays
+    let later = Env { cache: sc.env.cache.clone(), now: sc.env.now + 3600, trash_days: 30 };
+    let ids = |p: &Path| notes(p).into_iter().map(|n| n.2).collect::<Vec<_>>();
+    let dictionary = |p: &Path| store::header(p).unwrap().ids.into_iter().map(|(k, _)| k).collect::<Vec<_>>();
+    let summary = |r: Vec<crate::untag::Removed>| r.into_iter().map(|r| (r.id, r.deleted, r.notes)).collect::<Vec<_>>();
+
+    // From chosen notes only: the identifiers stay defined.
+    let (removed, links) = rmid(&later, &p, &strings(&["c", "b", "c"]), &[2, 3]).unwrap();
+    assert_eq!(summary(removed), [("c".into(), None, 1), ("b".into(), None, 1)]);
+    assert_eq!(links, ["c.nt"]);
+    assert!(!sc.root.join("c.nt").exists() && sc.root.join("b.nt").exists());
+    assert_eq!(ids(&p), ["a,b", "a", ""]);
+    assert_eq!(dictionary(&p), ["a", "b", "c"]);
+
+    // Everywhere: out of the dictionary and every note, and links filtering on it go too.
+    let (removed, links) = rmid(&later, &p, &strings(&["a"]), &[]).unwrap();
+    assert_eq!(summary(removed), [("a".into(), Some("A".into()), 2)]);
+    assert_eq!(links, ["a.nt"]);
+    assert_eq!(ids(&p), ["b", "", ""]);
+    assert_eq!(dictionary(&p), ["b", "c"]);
+    assert!(sc.root.join("one.nt").exists());
+    let (_, mut r) = store::open(&p).unwrap();
+    while let Some(n) = r.next_note().unwrap() {
+        assert_eq!(n.ts, sc.env.stamp()); // timestamps don't move
+    }
+
+    assert_eq!(rmid(&sc.env, &p, &strings(&["zzz"]), &[]).unwrap_err().to_string(), "no id 'zzz'");
+    assert_eq!(rmid(&sc.env, &p, &strings(&["b"]), &[9]).unwrap_err().to_string(), "no note 9");
+    let untouched = fs::read_to_string(&p).unwrap();
+    let (removed, _) = rmid(&sc.env, &p, &strings(&["b"]), &[2]).unwrap(); // note 2 doesn't carry b
+    assert_eq!(removed[0].notes, 0);
+    assert_eq!(fs::read_to_string(&p).unwrap(), untouched);
+}
+
+#[test]
+fn restore_drops_identifiers_deleted_meanwhile() {
+    let sc = Scratch::new("rmid-restore");
+    let p = sc.notebook("t.nb");
+    sc.add(&p, &["a:A", "b:B"], "one", "1").unwrap();
+    sc.add(&p, &["a"], "two", "2").unwrap();
+    rm(&sc.env, &p, &[1]).unwrap();
+    rmid(&sc.env, &p, &strings(&["a"]), &[]).unwrap();
+    restore(&sc.env, &p, &[1]).unwrap();
+    assert_eq!(notes(&p), [(1, "one".into(), "b".into(), "1".into()), (2, "two".into(), "".into(), "2".into())]);
 }

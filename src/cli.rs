@@ -4,7 +4,7 @@ use crate::env::Env;
 use crate::filter::Filter;
 use crate::link::resolve;
 use crate::read::{self, View};
-use crate::{Res, remove, trash, write};
+use crate::{Res, remove, trash, untag, write};
 use clap::{Parser, Subcommand};
 use std::io::{self, BufWriter, IsTerminal, Write};
 use std::path::PathBuf;
@@ -46,6 +46,19 @@ enum Cmd {
         /// New body; pass - to read it from stdin
         #[arg(long)]
         text: Option<String>,
+    },
+    /// Remove identifiers from notes, or delete them from the notebook altogether
+    #[command(visible_alias = "untag")]
+    Rmid {
+        /// Notebook (.nb) or link (.nt)
+        file: PathBuf,
+        /// Identifiers to remove
+        #[arg(required = true)]
+        ids: Vec<String>,
+        /// Only from these notes, keeping the identifier defined (repeatable). Without this, the
+        /// identifier is deleted from every note and from the dictionary
+        #[arg(long = "note", short = 'n')]
+        notes: Vec<u32>,
     },
     /// Remove notes, and delete the .nt links that point at them. Recoverable with `restore`.
     Rm {
@@ -122,6 +135,18 @@ fn run(cli: Cli) -> Res<()> {
             let nb = resolve(&file)?.0;
             let body = text.as_deref().map(|t| read_body(Some(t))).transpose()?;
             write::edit(&env, &nb, n, &ids, title.as_deref(), body.as_deref())?;
+        }
+        Cmd::Rmid { file, ids, notes } => {
+            let (removed, links) = untag::rmid(&env, &resolve(&file)?.0, &ids, &notes)?;
+            for r in removed {
+                match r.deleted {
+                    Some(meaning) => writeln!(out, "deleted id {}: {meaning} (was on {} note{})", r.id, r.notes, s(r.notes))?,
+                    None => writeln!(out, "removed id {} from {} note{}", r.id, r.notes, s(r.notes))?,
+                }
+            }
+            for l in links {
+                writeln!(out, "deleted link {l}")?;
+            }
         }
         Cmd::Rm { file, notes } => {
             for l in remove::rm(&env, &resolve(&file)?.0, &notes)? {

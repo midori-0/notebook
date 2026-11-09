@@ -87,6 +87,17 @@ nb restore backend.nb 7   # undo: the note comes back with its number and its li
 
 `nb purge` (specific numbers, `--all`, or `--orphans` for trash of deleted notebooks) deletes from the trash permanently. Run it only when the user asks for it.
 
+## Removing identifiers
+
+Delete an identifier that was a mistake, a near-duplicate of another, or a topic that no longer exists. Take one off a note that was tagged wrongly.
+
+```bash
+nb rmid backend.nb authn         # out of the dictionary and every note
+nb rmid backend.nb perf -n 12    # off note 12 only; perf stays defined
+```
+
+Timestamps don't change. `rmid` (alias `untag`) also deletes `.nt` links that filter on a deleted identifier, or would select nothing afterwards, and prints them. There's no undo, so before deleting a near-duplicate, retag its notes with the identifier you're keeping (`nb edit <file> <n> -i ...`).
+
 ## Sharing a selection in a folder: `.nt` links
 
 When information belongs next to specific code, or another agent or person needs it in a particular folder, don't copy it into a new markdown file. Create a link:
