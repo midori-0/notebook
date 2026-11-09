@@ -1,0 +1,5 @@
+{
+  "name": "notebook",
+  "owner": { "name": "midori_0" },
+  "plugins": [{ "name": "nb-diff", "source": "./plugins/nb-diff" }]
+}

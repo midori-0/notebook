@@ -1,0 +1,1 @@
+{ "name": "nb-diff", "version": "0.1.0", "description": "Show what each nb notebook command changed as a red/green diff under its tool call (display only; the model sees nothing new)", "types": "./types/index.d.ts" }
