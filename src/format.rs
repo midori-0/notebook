@@ -328,17 +328,16 @@ impl<R: BufRead + Seek> Reader<R> {
 /// byte loop, and std's memchr isn't public.)
 fn newline(h: &[u8]) -> Option<usize> {
     const ONES: u64 = u64::from_ne_bytes([1; 8]);
-    let mut words = h.chunks_exact(8);
-    for (i, w) in words.by_ref().enumerate() {
-        let x = u64::from_le_bytes(w.try_into().unwrap()) ^ (ONES * b'\n' as u64);
+    let (words, tail) = h.as_chunks::<8>();
+    for (i, w) in words.iter().enumerate() {
+        let x = u64::from_le_bytes(*w) ^ (ONES * b'\n' as u64);
         // The lowest set bit marks the first zero byte of `x`, which is the first newline.
         let zero = x.wrapping_sub(ONES) & !x & (ONES << 7);
         if zero != 0 {
             return Some(i * 8 + zero.trailing_zeros() as usize / 8);
         }
     }
-    let tail = words.remainder();
-    tail.iter().position(|&b| b == b'\n').map(|p| h.len() - tail.len() + p)
+    tail.iter().position(|&b| b == b'\n').map(|p| words.len() * 8 + p)
 }
 
 /// `bytes` as text; `line` is the line they start on, for the error.
