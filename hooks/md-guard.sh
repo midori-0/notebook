@@ -1,7 +1,7 @@
 #!/bin/sh
-# Claude Code PreToolUse hook (matcher: Write). When an agent creates a NEW .md file
-# outside the allowlist, ask the user first and point the agent to `nb`.
-# Editing existing .md files, and allowlisted names and folders, pass silently.
+# Claude Code PreToolUse hook (matcher: Write). Asks the user before an agent creates a new
+# .md file outside the allowlist, and points the agent at `nb`. Existing files, allowlisted
+# names and allowlisted folders pass silently.
 
 path=$(jq -r '.tool_input.file_path // empty')
 case "$path" in *.md|*.MD|*.markdown) ;; *) exit 0 ;; esac

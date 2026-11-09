@@ -1,8 +1,9 @@
-// Pure helpers: which notebook files a command writes, and a unified line diff.
+// The mod's pure logic: which notebook files a shell command writes, and a line diff of each
+// file's before and after. No I/O, so all of it is testable on plain strings.
 
 const WRITES = new Set(['make', 'add', 'edit', 'rm', 'restore', 'link'])
 
-/** The .nb/.nt files that write commands in a shell command name (first such argument of each). */
+/** The .nb/.nt file each nb write command names (its first such argument), in order, deduplicated. */
 export function targets(command: string): string[] {
   const files: string[] = []
   const call = /(?:^|[\s;&|(/\\])(?:nb|notebook)(?:\.exe)?\s+([a-z]+)((?:[ \t]+(?:"[^"]*"|'[^']*'|[^\s;&|]+))*)/g
@@ -15,7 +16,7 @@ export function targets(command: string): string[] {
   return files
 }
 
-/** `cd <dir> && ...` at the start of a command: the folder its relative paths are in. */
+/** The folder of a leading `cd <dir> &&`, which the command's relative paths are under. */
 export function leadingCd(command: string): string | undefined {
   return command.match(/^\s*cd\s+("[^"]*"|'[^']*'|\S+)\s*&&/)?.[1]!.replace(/^["']|["']$/g, '')
 }
@@ -34,58 +35,96 @@ export function dirname(p: string): string {
   return i < 0 ? '' : p.slice(0, i) || p.slice(0, 1)
 }
 
-/** The notebook a .nt link points at, from its `notebook:` line, relative to the link's folder. */
+/** The notebook a .nt link points at: its `notebook:` line, taken relative to the link's folder. */
 export function linkTarget(ntPath: string, ntText: string): string | undefined {
   const rel = ntText.match(/^notebook: (.+)$/m)?.[1]
   return rel === undefined ? undefined : join(dirname(ntPath) || undefined, rel)
 }
 
-type Op = { k: ' ' | '-' | '+'; t: string; a: number; b: number }
-
 const lines = (s: string) => (s === '' ? [] : s.replace(/\n$/, '').split('\n'))
 
-/** Line ops between two texts: common prefix/suffix trimmed, LCS in between. */
-function ops(before: string, after: string): Op[] {
-  const a = lines(before)
-  const b = lines(after)
+/** Where the shared first and last lines end: only `a[s..ea)` and `b[s..eb)` differ. */
+function trim(a: string[], b: string[]) {
   let s = 0
-  while (s < a.length && s < b.length && a[s]! === b[s]!) s++
+  while (s < a.length && s < b.length && a[s] === b[s]) s++
   let ea = a.length
   let eb = b.length
-  while (ea > s && eb > s && a[ea - 1]! === b[eb - 1]!) {
+  while (ea > s && eb > s && a[ea - 1] === b[eb - 1]) {
     ea--
     eb--
   }
-  const out: Op[] = []
-  for (let i = 0; i < s; i++) out.push({ k: ' ', t: a[i]!, a: i, b: i })
-  const n = ea - s
-  const m = eb - s
-  let i = 0
-  let j = 0
-  // shortcut: LCS table is O(n*m); past ~1M cells the changed block is shown as remove-then-add.
-  if (n * m <= 1_000_000) {
-    const w = m + 1
-    const L = new Uint32Array((n + 1) * w)
-    for (let x = n - 1; x >= 0; x--)
-      for (let y = m - 1; y >= 0; y--)
-        L[x * w + y] = a[s + x]! === b[s + y]! ? L[(x + 1) * w + y + 1]! + 1 : Math.max(L[(x + 1) * w + y]!, L[x * w + y + 1]!)
-    while (i < n && j < m) {
-      if (a[s + i]! === b[s + j]!) {
-        out.push({ k: ' ', t: a[s + i]!, a: s + i, b: s + j })
-        i++
-        j++
-      } else if (L[(i + 1) * w + j]! >= L[i * w + j + 1]!) {
-        out.push({ k: '-', t: a[s + i]!, a: s + i, b: s + j })
-        i++
-      } else {
-        out.push({ k: '+', t: b[s + j]!, a: s + i, b: s + j })
-        j++
+  return { s, ea, eb }
+}
+
+// Past this many changed lines the changed region is shown as removed, then added. Memory for
+// the search grows with the square of this.
+const MAX_EDITS = 1000
+
+/**
+ * Myers' O(ND) diff of the n lines from a[s] against the m lines from b[s]: the indexes (from s)
+ * of the lines they keep in common, in order. Work grows with the number of changed lines, not
+ * the file's size, so removing two notes far apart in a big notebook stays cheap.
+ * Null past `MAX_EDITS` changes.
+ */
+function common(a: string[], b: string[], s: number, n: number, m: number): [number, number][] | null {
+  // v[k + off]: how far right the best path so far reaches on diagonal k (k = x - y).
+  const off = MAX_EDITS + 1
+  const v = new Int32Array(2 * MAX_EDITS + 3)
+  const trace: Int32Array[] = [] // v before each round, diagonals -d-1..d+1, for walking back
+  for (let d = 0; d <= MAX_EDITS; d++) {
+    trace.push(v.slice(off - d - 1, off + d + 2))
+    for (let k = -d; k <= d; k += 2) {
+      let x = k === -d || (k !== d && v[off + k - 1]! < v[off + k + 1]!) ? v[off + k + 1]! : v[off + k - 1]! + 1
+      let y = x - k
+      while (x < n && y < m && a[s + x] === b[s + y]) {
+        x++
+        y++
       }
+      v[off + k] = x
+      if (x >= n && y >= m) return walkBack(trace, n, m)
     }
   }
-  for (; i < n; i++) out.push({ k: '-', t: a[s + i]!, a: s + i, b: s + j })
-  for (; j < m; j++) out.push({ k: '+', t: b[s + j]!, a: s + n, b: s + j })
-  for (let x = 0; x < a.length - ea; x++) out.push({ k: ' ', t: a[ea + x]!, a: ea + x, b: eb + x })
+  return null
+}
+
+/** Retraces the path `common` found, from the end back to the start, collecting its diagonals. */
+function walkBack(trace: Int32Array[], n: number, m: number): [number, number][] {
+  const pairs: [number, number][] = []
+  let x = n
+  let y = m
+  for (let d = trace.length - 1; d >= 0; d--) {
+    const v = trace[d]!
+    const at = (k: number) => v[k + d + 1]!
+    const k = x - y
+    const prev = k === -d || (k !== d && at(k - 1) < at(k + 1)) ? k + 1 : k - 1
+    const px = at(prev)
+    const py = px - prev
+    while (x > px && y > py) pairs.push([--x, --y])
+    x = px
+    y = py
+  }
+  return pairs.reverse()
+}
+
+type Op = { k: ' ' | '-' | '+'; t: string; a: number; b: number }
+
+/** Every line of both texts as kept, removed or added, with its index in each. */
+function ops(before: string, after: string): Op[] {
+  const a = lines(before)
+  const b = lines(after)
+  const { s, ea, eb } = trim(a, b)
+  const out: Op[] = []
+  for (let i = 0; i < s; i++) out.push({ k: ' ', t: a[i]!, a: i, b: i })
+  const kept = common(a, b, s, ea - s, eb - s) ?? []
+  let x = s
+  let y = s
+  // Between kept lines, removals come before additions, as in any unified diff.
+  for (const [i, j] of [...kept.map(([i, j]) => [s + i, s + j]), [ea, eb]]) {
+    for (; x < i!; x++) out.push({ k: '-', t: a[x]!, a: x, b: y })
+    for (; y < j!; y++) out.push({ k: '+', t: b[y]!, a: x, b: y })
+    if (x < ea) out.push({ k: ' ', t: a[x]!, a: x++, b: y++ })
+  }
+  for (let i = 0; i < a.length - ea; i++) out.push({ k: ' ', t: a[ea + i]!, a: ea + i, b: eb + i })
   return out
 }
 
@@ -121,22 +160,15 @@ export function hunks(before: string, after: string, ctx = 3): Hunk[] {
   return out
 }
 
-/** The changed region of each text (common leading and trailing lines dropped). */
+/** The part of each text that changed: shared first and last lines dropped. */
 export function region(before: string, after: string): { oldString: string; newString: string } {
   const a = lines(before)
   const b = lines(after)
-  let s = 0
-  while (s < a.length && s < b.length && a[s] === b[s]) s++
-  let ea = a.length
-  let eb = b.length
-  while (ea > s && eb > s && a[ea - 1] === b[eb - 1]) {
-    ea--
-    eb--
-  }
+  const { s, ea, eb } = trim(a, b)
   return { oldString: a.slice(s, ea).join('\n'), newString: b.slice(s, eb).join('\n') }
 }
 
-/** Unified-diff text of the same hunks; '' when nothing changed. */
+/** The same hunks as unified-diff text; '' when nothing changed. */
 export function unified(before: string, after: string, ctx = 3): string {
   return hunks(before, after, ctx)
     .map(h => [`@@ -${h.oldStart},${h.oldLines} +${h.newStart},${h.newLines} @@`, ...h.lines].join('\n'))

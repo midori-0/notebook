@@ -47,6 +47,14 @@ test('unified keeps unchanged notes between two removed ones as context', () => 
   expect(d.split('\n').filter(l => l.startsWith('+')).length).toBe(0)
 })
 
+test('unified shows only the removed notes when they sit far apart in a big notebook', () => {
+  const notes = (ns: number[]) => 'notebook v1\n\n' + ns.map(n => `@@ ${n} t [] n${n}\nbody ${n}\n\n`).join('')
+  const all = Array.from({ length: 5000 }, (_, i) => i + 1)
+  const d = unified(notes(all), notes(all.filter(n => n !== 3 && n !== 4990)))
+  expect(d.split('\n').filter(l => /^[-+]/.test(l)).length).toBe(6)
+  expect(d.split('\n').filter(l => l.startsWith('@@ -')).length).toBe(2)
+})
+
 test("an nb call's row is drawn as the app's Edit card; the model-facing result is unchanged", async ($, on) => {
   let reads = 0
   on('session.cwd', () => ({ value: '/proj' }))

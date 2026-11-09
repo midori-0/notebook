@@ -27,7 +27,7 @@ Looking for single-celled organisms never means reading the octopus notes.
 - **Fewer redundant reads.** Headers and the identifier dictionary are a cheap index, so agents read the index first and pull exact notes with `-n`, `-i`, `--since`.
 - **Less clutter.** One notebook per subject instead of scattered markdown files. `.nt` link files put a selection of notes in a specific folder without copying anything.
 - **Shared vocabulary.** A new identifier must come with a one-line meaning. Agents reuse identifiers instead of inventing near-duplicates.
-- **Fast and safe.** Written in Rust, with no runtime dependencies beyond `clap`. Commands take about 5 ms on a 10,000-note notebook. Writes lock the file, so many agents can write at once. Rewrites are atomic.
+- **Fast and safe.** Written in Rust, with no runtime dependencies beyond `clap`. Commands stream a notebook one note at a time: about 5 ms on a 10,000-note notebook, and about 2 MB of memory however big it gets. Writes lock the file, so many agents can write at once. Rewrites are atomic.
 
 ## Install
 
@@ -188,7 +188,11 @@ claude plugin test plugins/nb-diff      # mod tests
 ```
 
 ```text
-src/lib.rs              the CLI: parser, commands, locking, trash
+src/format.rs           the .nb format and its streaming reader
+src/store.rs            opening, locking and atomically replacing files
+src/trash.rs            the trash: removed notes, expiry, orphan sweeps
+src/read.rs, write.rs, remove.rs   the commands
+src/cli.rs              argument parsing and output
 src/main.rs, bin/nb.rs  the `notebook` and `nb` binaries
 skills/notebook/        Claude Code skill
 hooks/                  .md guard hook and its self-check
