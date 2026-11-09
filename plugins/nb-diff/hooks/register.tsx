@@ -7,42 +7,28 @@ import { hunks, join, leadingCd, linkTarget, region, targets } from './diff'
 // Changes by tool_use_id, so each row finds its own. Display only: nothing here reaches the
 // model, and the Bash result it reads is untouched.
 const diffs = atom({ plugin: 'nb-diff', key: 'diffs' } as const, {}, { shape: 'diffs-2' })
-const KEEP = 200 // most recent calls whose changes are kept for redraws
+const KEEP = 200 // how many recent calls keep their changes for redraws
+
+type Watched = { file: string; path: string }
+type ReadOr = (path: string) => Promise<string | undefined>
 
 export const register: Register = on => {
   on('tool.call', { tool: 'Bash' }, async ($, e, next) => {
     const files = targets(e.command)
     if (files.length === 0) return next(e)
 
-    const cwd = await $.session.cwd()
-    const base = join(cwd, leadingCd(e.command) ?? '')
-    const readOr = (p: string) => $.fs.read(p).then(t => t as string, () => undefined)
-    // A .nt argument writes the notebook it links to: snapshot that file instead.
-    const paths = await Promise.all(
-      files.map(async f => {
-        const p = join(base, f)
-        if (!p.endsWith('.nt')) return { file: f, path: p }
-        const text = await readOr(p)
-        return { file: f, path: (text && linkTarget(p, text)) || p }
-      }),
-    )
-    const before = await Promise.all(paths.map(p => readOr(p.path)))
+    const readOr: ReadOr = p => $.fs.read(p).then(t => t as string, () => undefined)
+    const base = join(await $.session.cwd(), leadingCd(e.command) ?? '')
+    const watched = await Promise.all(files.map(f => notebookOf(f, join(base, f), readOr)))
+    const before = await Promise.all(watched.map(w => readOr(w.path)))
 
     const ran = await next(e)
 
     try {
-      const found: FileDiff[] = []
-      for (const [i, p] of paths.entries()) {
-        const after = await readOr(p.path)
-        if (after === undefined && before[i] === undefined) continue
-        const patch = hunks(before[i] ?? '', after ?? '')
-        if (patch.length > 0) found.push({ file: p.file, path: p.path, patch, ...region(before[i] ?? '', after ?? '') })
-      }
+      const after = await Promise.all(watched.map(w => readOr(w.path)))
+      const found = watched.flatMap((w, i) => change(w, before[i], after[i]))
       if (found.length > 0) {
-        await update($, diffs, all => {
-          const kept = Object.entries(all).slice(-(KEEP - 1))
-          return { ...Object.fromEntries(kept), [e.tool_use_id]: found }
-        })
+        await update($, diffs, all => ({ ...Object.fromEntries(Object.entries(all).slice(-(KEEP - 1))), [e.tool_use_id]: found }))
       }
     } catch {
       // A diff is decoration: never let it change what the command returned.
@@ -50,8 +36,8 @@ export const register: Register = on => {
     return ran
   }).catch(($, e, next) => next(e)) // failed before running it: run the command as if the mod weren't here
 
-  // The desktop folds runs of Bash calls into one group line: unfold a group holding an nb change
-  // so its call draws as its own row.
+  // The desktop folds runs of Bash calls into one group line. Unfold a group holding an nb
+  // change so that call gets its own row.
   on('ui.render', { component: 'ToolGroup' }, async ($, e, next) => {
     if (e.props.isExpanded) return next(e)
     const all = await read($, diffs)
@@ -81,4 +67,18 @@ export const register: Register = on => {
       },
     })
   }).catch(($, e, next) => next(e)) // a refused rewrite draws the ordinary Bash row
+}
+
+/** The file to watch for a command argument. A .nt link writes the notebook it points at. */
+async function notebookOf(file: string, path: string, readOr: ReadOr): Promise<Watched> {
+  if (!path.endsWith('.nt')) return { file, path }
+  const text = await readOr(path)
+  return { file, path: (text && linkTarget(path, text)) || path }
+}
+
+/** What changed in one file, shaped for its Edit card; nothing if it didn't change. */
+function change(w: Watched, before: string | undefined, after: string | undefined): FileDiff[] {
+  if (before === undefined && after === undefined) return []
+  const patch = hunks(before ?? '', after ?? '')
+  return patch.length > 0 ? [{ ...w, patch, ...region(before ?? '', after ?? '') }] : []
 }
