@@ -4,7 +4,7 @@
 
 A searchable, single-file notebook for AI agents, written in Rust.
 
-Coding agents take notes as they work: plans, findings, decisions, handoffs for the next session. Left to themselves they write `NOTES.md`, `PLAN.md` and `findings-v2.md`, and every later session pays to read those files again in full. `notebook` (`nb` for short) keeps each subject in one plain-text `.nb` file of small, numbered notes. Each note has a timestamp, a title and identifiers from a dictionary at the top of the file, so an agent reads the index first and opens only the notes it needs.
+Coding agents keep notes while they work. Left to themselves they write `NOTES.md`, `PLAN.md` and `findings-v2.md`, and every later session pays to read those files again in full. `notebook` (`nb` for short) keeps each subject in one plain-text `.nb` file of small, numbered notes. Each note has a timestamp, a title and identifiers from a dictionary at the top of the file, so an agent reads the index first and opens only the notes it needs.
 
 ```text
 $ nb ids backend.nb
@@ -36,7 +36,7 @@ Measured with wrk against staging. bcrypt at cost 14 accounts for 610 ms.
 | Find what's known about one topic | Read the whole file | `nb list -i <topic>`, then `nb show -n` for the notes you want |
 | Scan without reading bodies | Headings are mixed in with the text | `nb list` prints one header line per note |
 | See what changed since yesterday | Dig through git history | `nb list --since 2026-11-11` |
-| Topic names | Free text that drifts (`auth`, `login`, `authn`) | A dictionary: each identifier is defined once, with its meaning |
+| Topic names | Free text that drifts (`auth`, `login`, `authn`) | Defined once, with a meaning, in the file's dictionary |
 | Two agents writing at once | The last write wins | A lock and an atomic rename |
 | Undo a deletion | Only if it was committed | `nb restore`, for 30 days |
 | Notes that belong beside code | Copy them into another file | A `.nt` link file that points back into the notebook |
@@ -73,7 +73,7 @@ The question is "what do my notes say about this topic?" With `nb` that's `nb id
 | 10,000 | 4.3 MB | 1.9 ms | 4.2 ms | 3.8 ms | 3.6 ms | 4.0 ms | 9.7 ms | 17.1 ms |
 | 100,000 | 43.3 MB | 2.0 ms | 25.8 ms | 21.8 ms | 19.8 ms | 20.5 ms | 32.8 ms | 54.2 ms |
 
-`ids` reads only the dictionary, so its time doesn't depend on the number of notes. `add` appends, but scans the notebook for the next free number. `edit` and `rm` rewrite the file and wait for it to reach the disk before swapping it in; `rm` also writes the note to the trash first.
+`ids` reads only the dictionary, so its time doesn't depend on the number of notes. `add` appends, but scans the notebook for the next free number. `edit` and `rm` rewrite the file and wait for it to reach the disk before swapping it in. `rm` also writes the note to the trash first.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="assets/bench-memory-dark.svg">
@@ -82,7 +82,7 @@ The question is "what do my notes say about this topic?" With `nb` that's `nb id
 
 Every command reads the notebook one note at a time and copies unchanged notes straight into the replacement file, so peak memory doesn't grow with the notebook.
 
-To run the benchmarks yourself:
+To run the benchmarks yourself, build a release binary and run the two scripts.
 
 ```bash
 cargo build --release
@@ -112,7 +112,7 @@ nb list backend.nb -i auth
 nb edit backend.nb 1 --text "Reusing an old refresh token revokes every token in its family."
 ```
 
-`nb add` prints the new note's number. Without `--text`, the body comes from stdin. A new identifier needs a meaning the first time (`-i 'name:meaning'`); after that, `-i name` is enough.
+`nb add` prints the new note's number. Without `--text`, the body comes from stdin. The first time an identifier is used it needs a meaning, as in `-i 'name:meaning'`. After that, `-i name` is enough.
 
 ## Commands
 
@@ -144,7 +144,7 @@ nb edit backend.nb 1 --text "Reusing an old refresh token revokes every token in
 | `nb purge <file> <n>...` or `--all` | Delete from the trash for good |
 | `nb purge --orphans` | Delete trash left by notebooks that no longer exist |
 
-`list`, `show` and `link` take filters:
+`list`, `show` and `link` accept the same filters.
 
 - `-n 3 -n 5` matches any of the given note numbers.
 - `-i api -i bug` matches notes that carry every given identifier.
@@ -154,7 +154,7 @@ Every command accepts a `.nt` link in place of a notebook. `nb show docs/api.nt`
 
 ## Links
 
-A `.nt` file puts a selection of notes next to the code it describes, without copying anything:
+A `.nt` file puts a selection of notes next to the code it describes, without copying anything.
 
 ```bash
 nb link backend.nb services/auth/auth.nt -i auth    # every auth note
@@ -173,7 +173,7 @@ Entries expire after 30 days, and `NB_TRASH_DAYS` changes that. Note numbers are
 
 ### The `/notebook` skill
 
-[`skills/notebook/`](skills/notebook/SKILL.md) teaches agents to use `nb`: what deserves a note, one notebook per subject, reading the index before the notes, reusing identifiers and editing notes instead of duplicating them. It also switches notebook mode:
+[`skills/notebook/`](skills/notebook/SKILL.md) tells agents when a note is worth writing and how to keep notebooks easy to search. It also switches notebook mode.
 
 ```text
 /notebook on       agents keep their own notes in nb, and new .md files need your approval
@@ -183,7 +183,7 @@ Entries expire after 30 days, and `NB_TRASH_DAYS` changes that. Note numbers are
 
 The mode is global and on by default. It's stored in `~/.claude/notebook-mode`, and `NB_MODE_FILE` points it elsewhere. Switching it mid-session changes how the current session behaves from then on.
 
-Two hooks do the enforcing. [`hooks/session-start.sh`](hooks/session-start.sh) gives each new, resumed, cleared or compacted session the rule in [`rule.txt`](skills/notebook/rule.txt) while the mode is on. [`hooks/md-guard.sh`](hooks/md-guard.sh) asks for your approval before an agent creates a new `.md` file outside an allowlist: README, CHANGELOG, LICENSE and the like, CLAUDE.md, AGENTS.md, SKILL.md, and anything under `.claude/` or an existing `docs/` folder. Notes-style names such as `PLAN.md`, `NOTES.md` or `handoff.md` are asked about even inside `docs/`.
+Two hooks do the enforcing. [`hooks/session-start.sh`](hooks/session-start.sh) gives each new, resumed, cleared or compacted session the rule in [`rule.txt`](skills/notebook/rule.txt) while the mode is on. [`hooks/md-guard.sh`](hooks/md-guard.sh) asks for your approval before an agent creates a new `.md` file, unless it's a standard project file such as a README, CHANGELOG, CLAUDE.md or AGENTS.md, or it sits under `.claude/` or an existing `docs/` folder. Files named like notes, such as `PLAN.md`, `NOTES.md` or `handoff.md`, are asked about even inside `docs/`.
 
 To set it up, link the skill and add both hooks to `~/.claude/settings.json`. They are shell scripts that need `jq`, and on Windows they run under Git Bash.
 
@@ -202,7 +202,7 @@ Keep the notebook rule out of `~/.claude/CLAUDE.md`. A line there applies regard
 
 ### Edit cards for notebook writes
 
-[`plugins/nb-diff/`](plugins/nb-diff/) is a Claude Code mod that draws each notebook write (`make`, `add`, `edit`, `rmid`, `rm`, `restore`, `link`) as Claude Code's own Edit card for the `.nb` file, with line numbers and red and green changes. It changes only the display; the agent's output and token use stay the same.
+[`plugins/nb-diff/`](plugins/nb-diff/) is a Claude Code mod that draws each notebook write (`make`, `add`, `edit`, `rmid`, `rm`, `restore`, `link`) as Claude Code's own Edit card for the `.nb` file, with line numbers and red and green changes. It changes only the display, so the agent's output and token use stay the same.
 
 ```bash
 claude plugin install nb-diff --marketplace midori-0/notebook
@@ -224,7 +224,7 @@ Reusing an old refresh token revokes the whole family.
 
 | Line | Meaning |
 |---|---|
-| `uid <id>` | Permanent id; names the notebook's trash folder |
+| `uid <id>` | Permanent id, also the name of the notebook's trash folder |
 | `id <name>: <meaning>` | One entry in the identifier dictionary |
 | `last <n>` | Highest note number ever used |
 | `link <path>` | A registered `.nt` link, relative to the notebook's folder |
@@ -264,4 +264,4 @@ claude plugin test plugins/nb-diff    # the edit-card mod
 ## Limitations
 
 - There's no full-text search over note bodies. Notes are found by identifier, number and time, and `grep` works on the file.
-- Commands that rewrite the file (`edit`, `rm`, `restore`, `rmid`, `link`, and `add` with a new identifier) take time in proportion to the notebook's size: 33 ms for an edit at 100,000 notes.
+- Commands that rewrite the file (`edit`, `rm`, `restore`, `rmid`, `link`, and `add` with a new identifier) take time in proportion to the notebook's size. An edit at 100,000 notes takes 33 ms.
