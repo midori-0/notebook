@@ -1,0 +1,159 @@
+{
+  "nb": "notebook 0.1.0",
+  "machine": "Apple M5 Max, macOS 26.6.2",
+  "date": "2026-11-12",
+  "sizes": [
+    {
+      "notes": 100,
+      "bytes": 44445,
+      "commands": {
+        "ids": {
+          "ms": 2.18,
+          "rss_mb": 2.22
+        },
+        "list": {
+          "ms": 1.81,
+          "rss_mb": 2.33
+        },
+        "list -i": {
+          "ms": 1.81,
+          "rss_mb": 2.33
+        },
+        "show -n": {
+          "ms": 1.78,
+          "rss_mb": 2.33
+        },
+        "add": {
+          "ms": 2.02,
+          "rss_mb": 2.38
+        },
+        "edit": {
+          "ms": 6.58,
+          "rss_mb": 2.41
+        },
+        "rm": {
+          "ms": 10.94,
+          "rss_mb": 2.44
+        }
+      },
+      "lookup": {
+        "nb_bytes": 4881,
+        "markdown_bytes": 43246
+      }
+    },
+    {
+      "notes": 1000,
+      "bytes": 435637,
+      "commands": {
+        "ids": {
+          "ms": 1.74,
+          "rss_mb": 2.22
+        },
+        "list": {
+          "ms": 2.0,
+          "rss_mb": 2.38
+        },
+        "list -i": {
+          "ms": 1.93,
+          "rss_mb": 2.38
+        },
+        "show -n": {
+          "ms": 1.92,
+          "rss_mb": 2.38
+        },
+        "add": {
+          "ms": 2.21,
+          "rss_mb": 2.42
+        },
+        "edit": {
+          "ms": 6.63,
+          "rss_mb": 2.47
+        },
+        "rm": {
+          "ms": 10.53,
+          "rss_mb": 2.5
+        }
+      },
+      "lookup": {
+        "nb_bytes": 6182,
+        "markdown_bytes": 436109
+      }
+    },
+    {
+      "notes": 10000,
+      "bytes": 4329299,
+      "commands": {
+        "ids": {
+          "ms": 1.85,
+          "rss_mb": 2.22
+        },
+        "list": {
+          "ms": 4.21,
+          "rss_mb": 2.38
+        },
+        "list -i": {
+          "ms": 3.84,
+          "rss_mb": 2.38
+        },
+        "show -n": {
+          "ms": 3.62,
+          "rss_mb": 2.38
+        },
+        "add": {
+          "ms": 4.02,
+          "rss_mb": 2.42
+        },
+        "edit": {
+          "ms": 9.66,
+          "rss_mb": 2.47
+        },
+        "rm": {
+          "ms": 17.09,
+          "rss_mb": 2.5
+        }
+      },
+      "lookup": {
+        "nb_bytes": 38290,
+        "markdown_bytes": 4336958
+      }
+    },
+    {
+      "notes": 100000,
+      "bytes": 43334275,
+      "commands": {
+        "ids": {
+          "ms": 2.02,
+          "rss_mb": 2.22
+        },
+        "list": {
+          "ms": 25.83,
+          "rss_mb": 2.38
+        },
+        "list -i": {
+          "ms": 21.75,
+          "rss_mb": 2.38
+        },
+        "show -n": {
+          "ms": 19.79,
+          "rss_mb": 2.38
+        },
+        "add": {
+          "ms": 20.49,
+          "rss_mb": 2.42
+        },
+        "edit": {
+          "ms": 32.79,
+          "rss_mb": 2.47
+        },
+        "rm": {
+          "ms": 54.22,
+          "rss_mb": 2.5
+        }
+      },
+      "lookup": {
+        "nb_bytes": 362921,
+        "markdown_bytes": 43323844
+      }
+    }
+  ]
+}
