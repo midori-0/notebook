@@ -1,8 +1,9 @@
 #!/bin/sh
 # Claude Code PreToolUse hook (matcher: Write). Asks the user before an agent creates a new
 # .md file outside the allowlist, and points the agent at `nb`. Existing files, allowlisted
-# names and allowlisted folders pass silently.
+# names and allowlisted folders pass silently, and so does everything while notebook mode is off.
 
+[ "$("$(dirname "$0")/../skills/notebook/mode.sh")" = off ] && exit 0
 path=$(jq -r '.tool_input.file_path // empty')
 case "$path" in *.md|*.MD|*.markdown) ;; *) exit 0 ;; esac
 [ -e "$path" ] && exit 0

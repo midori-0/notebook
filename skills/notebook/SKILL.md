@@ -1,6 +1,8 @@
 ---
 name: notebook
-description: Use the `nb` notebook CLI instead of loose markdown files for an agent's own notes, plans, findings, progress logs, decisions, TODOs, research and handoffs. Use it before creating any scratch or notes .md file, when recording what you learned or decided, when resuming work, and before re-reading large files you may have summarized already. Do not use it for files that people or tools expect as markdown (README, CHANGELOG, docs/, CLAUDE.md, AGENTS.md).
+description: Use the `nb` notebook CLI instead of loose markdown files for an agent's own notes, plans, findings, progress logs, decisions, TODOs, research and handoffs. Use it before creating any scratch or notes .md file, when recording what you learned or decided, when resuming work, and before re-reading large files you may have summarized already. Do not use it for files that people or tools expect as markdown (README, CHANGELOG, docs/, CLAUDE.md, AGENTS.md). The user switches notebook mode with /notebook on, /notebook off and /notebook status.
+argument-hint: "[on|off|status]"
+allowed-tools: Bash(${CLAUDE_SKILL_DIR}/mode.sh *)
 ---
 
 # notebook (`nb`)
@@ -8,6 +10,18 @@ description: Use the `nb` notebook CLI instead of loose markdown files for an ag
 `nb` stores many small markdown notes in one `.nb` file. Each note has a number, an automatic timestamp, identifiers and a title. Every identifier is defined once, with its meaning, in a dictionary at the top of the file. Read the dictionary and the headers first, then read only the notes you need, instead of re-reading whole files.
 
 If `nb` is not on PATH, tell the user and stop. It installs with `cargo install --path <notebook repo>`.
+
+## Notebook mode: `/notebook on`, `off`, `status`
+
+You were invoked with: `$ARGUMENTS`
+
+If the user typed `/notebook on`, `/notebook off` or `/notebook status`, run `${CLAUDE_SKILL_DIR}/mode.sh on` (or `off`, or `status`) and tell the user the mode in one line. The mode is global: it covers every project and every new session.
+
+- **on**: follow this guide for the rest of the session. New sessions start with the notebook rule, and creating a new `.md` file outside the allowlist needs the user's approval.
+- **off**: from now on, ignore this guide and any notebook rule given earlier in the session. Write markdown as you normally would, and use `nb` only when the user asks for it. New sessions start without the rule, and new `.md` files go through as usual.
+- **status**: just report it.
+
+Anything else after `/notebook`: say the choices are `on`, `off` and `status`, and change nothing. Without `/notebook`, you were loaded to keep notes, so carry on with the guide below. If notebook mode was switched off during this session, use `nb` only when the user asks for it.
 
 ## What a notebook is for
 

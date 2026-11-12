@@ -111,7 +111,7 @@ Removed notes and deleted links go to `~/.cache/notebook/<uid>/` on macOS and Li
 
 ## Using it with agents
 
-### Claude Code skill
+### The `/notebook` skill
 
 `skills/notebook/` teaches agents when and how to use `nb`:
 - what belongs in a notebook, and what doesn't;
@@ -120,30 +120,42 @@ Removed notes and deleted links go to `~/.cache/notebook/<uid>/` on macOS and Li
 - reusing identifiers;
 - editing a note rather than duplicating it.
 
-Enable it everywhere:
+It's also the switch for **notebook mode**:
+
+```text
+/notebook on       agents keep their own notes in nb; new .md files need your approval
+/notebook off      agents write markdown as usual and use nb only when asked
+/notebook status   which one it is
+```
+
+The mode is global: it applies to every project and every new session, and it's on until you turn it off. It lives in `~/.claude/notebook-mode` (`NB_MODE_FILE` overrides that). When you switch it mid-session, the current session follows the new mode from then on.
+
+Install the skill, then the two hooks below, which do the switching:
 
 ```bash
 ln -s "$PWD/skills/notebook" ~/.claude/skills/notebook
 ```
 
-For a stronger nudge, add a line like this to `~/.claude/CLAUDE.md`:
+```json
+{ "hooks": {
+  "SessionStart": [ { "hooks": [ { "type": "command", "command": "/path/to/notebook/hooks/session-start.sh" } ] } ],
+  "PreToolUse": [ { "matcher": "Write",
+    "hooks": [ { "type": "command", "command": "/path/to/notebook/hooks/md-guard.sh" } ] } ] } }
+```
 
-> For your own notes, plans, findings, TODOs, research and handoffs, use the `nb` notebook CLI (see the notebook skill), never new `.md` files. That includes plans, briefs and handoffs written for another agent, even when I call them a doc. Plain markdown is only for README, CHANGELOG, an existing docs site, CLAUDE.md, AGENTS.md, skills, memory, or when I ask for a `.md` file.
+Both are shell scripts that need `jq`; on Windows they run under the Git Bash that Claude Code uses. Don't also put the notebook rule in `~/.claude/CLAUDE.md`: a CLAUDE.md line applies whatever the mode, so `/notebook off` couldn't turn it off.
+
+### Session rule
+
+`hooks/session-start.sh` is a `SessionStart` hook. While notebook mode is on, it gives each new, resumed, cleared or compacted session the rule in `skills/notebook/rule.txt`: keep your own notes, plans and handoffs in `nb`, never new `.md` files. While it's off, it says nothing.
 
 ### Guard hook
 
-`hooks/md-guard.sh` is a `PreToolUse` hook (matcher `Write`). It asks for your approval before an agent creates a new `.md` file outside an allowlist:
+`hooks/md-guard.sh` is a `PreToolUse` hook (matcher `Write`). While notebook mode is on, it asks for your approval before an agent creates a new `.md` file outside an allowlist:
 - README, CHANGELOG, CONTRIBUTING, LICENSE, CLAUDE.md, AGENTS.md and SKILL.md;
 - anything under `.claude/`, or under a `docs/` folder that already exists.
 
-Notes by name (`PLAN.md`, `PLANNING.md`, `NOTES.md`, `TODO.md`, `handoff.md` and the like) are asked about even inside `docs/`, and so is a `docs/` folder created for the new file.
-
-Editing existing markdown is never blocked. It's a shell script that needs `jq`; on Windows it runs under the Git Bash that Claude Code uses. Add it to `~/.claude/settings.json`:
-
-```json
-{ "hooks": { "PreToolUse": [ { "matcher": "Write",
-  "hooks": [ { "type": "command", "command": "/path/to/notebook/hooks/md-guard.sh" } ] } ] } }
-```
+Notes by name (`PLAN.md`, `PLANNING.md`, `NOTES.md`, `TODO.md`, `handoff.md` and the like) are asked about even inside `docs/`, and so is a `docs/` folder created for the new file. Editing existing markdown is never blocked, and nothing is while the mode is off.
 
 ### Native edit cards (`nb-diff` mod)
 
@@ -186,7 +198,7 @@ Body lines that start with `@@` or `\` are stored with an extra leading `\`. Pat
 ```bash
 cargo test                              # format, filters, edit, remove/restore, trash expiry, moves (CI: macOS, Linux, Windows)
 cargo clippy --all-targets
-hooks/md-guard.test.sh                  # guard hook self-check
+hooks/md-guard.test.sh                  # guard and session hooks, and the mode switch
 claude plugin test plugins/nb-diff      # mod tests
 ```
 
@@ -197,8 +209,8 @@ src/trash.rs            the trash: removed notes, expiry, orphan sweeps
 src/read.rs, write.rs, remove.rs, untag.rs   the commands
 src/cli.rs              argument parsing and output
 src/main.rs, bin/nb.rs  the `notebook` and `nb` binaries
-skills/notebook/        Claude Code skill
-hooks/                  .md guard hook and its self-check
+skills/notebook/        the /notebook skill, its mode switch and the session rule
+hooks/                  session and .md guard hooks, and their self-check
 plugins/nb-diff/        Claude Code mod: notebook writes as native Edit cards
 ```
 
